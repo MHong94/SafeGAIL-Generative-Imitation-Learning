@@ -88,18 +88,18 @@ def test():
     env_name = "CarRacing-v0"
     env = Env()
 
-    random_seed = 0
+    random_seed = 1
     lr = 0.0002
     betas = (0.5, 0.999)
-    n_episodes = 15
+    n_episodes = 50
     max_timesteps = 1000
     render = False
-    save_gif = True
+    save_gif = False
 
     directory = "./preTrained/{}".format(env_name)
     filename = "GAIL_Unconstrained_1"
     filename_safe = "GAIL_Constrained_1"
-    filename_RAIL = "GAIL_CarRacing-v0_0_RAIL"
+    filename_RAIL = "GAIL_CarRacing-v0_1_l2"
 
     state_dim = env.env.observation_space.shape[0]
     action_dim = env.env.action_space.shape[0]
@@ -126,9 +126,10 @@ def test():
     for ix, policy in enumerate(policies):
         curr_green_penalty = 0
 
-        imgs = []
+        
         for ep in range(1, n_episodes + 1):
             ep_reward = 0
+            imgs = []
             state = env.reset()
             for t in range(max_timesteps):
                 action = policy.select_action(state)
@@ -139,15 +140,15 @@ def test():
                 curr_green_penalty += green_penalty
                 ep_reward += reward
                 if render:
-                    env.render('rgb_array')
+                    env.render('human')
                 if save_gif:
                     img = env.render(mode='rgb_array')
                     img = Image.fromarray(img)
                     imgs.append(img)
-                    img.save('./gif/safe/{}_{}.jpg'.format(ep, t))
+                    img.save('./gif/{}_{}.jpg'.format(ep, t))
                 if done or die:
                     if save_gif:
-                        imgs[0].save('gif/' + str(1) + '/' + str(ep) + '.gif', format='GIF', append_images=imgs[1:],
+                        imgs[0].save('gif/' + str(ep) + '.gif', format='GIF', append_images=imgs[1:],
                                      save_all=True, duration=100, loop=0)
                     break
 
@@ -157,7 +158,7 @@ def test():
 
     print("Green Penalty:", green_penalties / n_episodes)
     print("Distance:", distances / total_steps)
-    np.save("positions/positions_unconstrained.out", np.array(positions))
+    # np.save("positions/positions_unconstrained.out", np.array(positions))
 
 
 test()

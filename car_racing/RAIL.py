@@ -118,8 +118,10 @@ class RAIL:
     def select_action(self, state):
         # state = torch.FloatTensor(state.reshape(1, -1)).to(device)
         state = torch.FloatTensor(state).to(device)
+        if len(state.shape) == 3:
+            state = state.unsqueeze(dim=0)
         actions = self.actor(state).cpu().data.numpy()
-        return actions.flatten(), actions
+        return actions.flatten()
 
     def update(self, n_iter, discount, batch_size=100):
         for i in range(n_iter):
@@ -134,7 +136,7 @@ class RAIL:
             action = self.actor(state)
             
             # calculate trajectory costs
-            traj_cost = -self.discriminator(state, action)
+            traj_cost = self.discriminator(state, action)
 
             #######################
             # update discriminator
@@ -154,9 +156,10 @@ class RAIL:
             loss += self.loss_fn(prob_policy, policy_label)
             
             # with cvar
-            geometric_sum = (1-self.discount**len(state))/(1-self.discount)
-            cvar_discrim_loss = self.cvar_lambda/(1-self.cvar_alpha) * geometric_sum * (traj_cost >= self.cvar_nu)
-
+            geometric_sum = (1-self.discount**1)/(1-self.discount)
+            cvar_discrim_loss = self.cvar_lambda/(1-self.cvar_alpha)*torch.mean(geometric_sum * (traj_cost >= self.cvar_nu))
+            loss += cvar_discrim_loss
+            
             # take gradient step
             loss.backward()
             self.optim_discriminator.step()
@@ -168,8 +171,9 @@ class RAIL:
                 self.optim_actor.zero_grad()
 
                 loss_actor = -self.discriminator(state, action)
-                traj_cost = loss_actor
+                traj_cost = -loss_actor
                 cvar_policy_loss = self.cvar_lambda/(1-self.cvar_alpha) * (traj_cost - self.cvar_nu) * (traj_cost >= self.cvar_nu)
+                loss_actor += cvar_policy_loss
                 loss_actor.mean().backward()
                 self.optim_actor.step()
                 
@@ -177,7 +181,7 @@ class RAIL:
             ################
             # update cvar parameter
             ################
-            self.cvar_nu -= self.cvar_lr * np.mean(traj_cost >= self.cvar_nu)
+            self.cvar_nu -= self.cvar_lr * (1-((1/(1-self.cvar_alpha))*torch.mean(1.*(traj_cost >= self.cvar_nu))))
 
     def pretrain_discriminator(self, batch_size, pretrain_iter):
         for i in range(pretrain_iter):

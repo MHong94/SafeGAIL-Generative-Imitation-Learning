@@ -43,12 +43,13 @@ class Actor(nn.Module):
     def forward(self, x):
         x = self.cnn_base(x)
         x = x.view(-1, 256)
-        x = F.relu(self.l1(x))
-        x = F.relu(self.l2(x))
+        
+        x = torch.relu(self.l1(x))
+        x = torch.relu(self.l2(x))
 
         # x_first = torch.tanh(self.first(x)) * self.max_action
         # x_rest = torch.sigmoid(self.rest(x)) * self.max_action
-        #
+        
         # x = torch.cat([x_first, x_rest], 1)
         x = torch.tanh(self.l3(x)) * self.max_action
         return x
@@ -90,7 +91,6 @@ class Discriminator(nn.Module):
         state_action = torch.cat([state, action], 1)
         x = torch.tanh(self.l1(state_action))
         x = torch.tanh(self.l2(x))
-        # x = self.l3(x)
         x = torch.sigmoid(self.l3(x))
         return x
 
@@ -107,12 +107,15 @@ class GAIL:
         self.expert = ExpertTraj(env_name, safe)
 
         self.loss_fn = nn.BCELoss()
+        self.l2_loss = nn.MSELoss()
 
     def select_action(self, state):
         # state = torch.FloatTensor(state.reshape(1, -1)).to(device)
         state = torch.FloatTensor(state).to(device)
+        if len(state.shape) == 3:
+            state = state.unsqueeze(dim=0)
         actions = self.actor(state).cpu().data.numpy()
-        return actions.flatten(), actions
+        return actions.flatten()
 
     def update(self, n_iter, batch_size=100):
         for i in range(n_iter):
@@ -153,8 +156,10 @@ class GAIL:
             if i > 5:
                 self.optim_actor.zero_grad()
 
-                loss_actor = -self.discriminator(state, action)
-                loss_actor.mean().backward()
+                prob_actor = -self.discriminator(state, action)
+                prob_actor.mean().backward()
+                # loss_actor = self.loss_fn(prob_actor, exp_label)
+                # loss_actor.backward()
                 self.optim_actor.step()
 
     def pretrain_discriminator(self, batch_size, pretrain_iter):
@@ -189,7 +194,7 @@ class GAIL:
             loss.backward()
             self.optim_discriminator.step()
 
-            print("Discriminator Pretrain Iteration:", i + 1)
+            # print("Discriminator Pretrain Iteration:", i + 1)
 
     def pretrain_generator(self, batch_size, pretrain_iter):
         for i in range(pretrain_iter):
@@ -200,11 +205,13 @@ class GAIL:
             action = self.actor(state)
 
             self.optim_actor.zero_grad()
-            loss_actor = l2_loss(exp_action, action)
-            loss_actor.mean().backward()
+            loss_actor = self.l2_loss(exp_action, action)
+            loss_actor.backward()
+            # loss_actor = l2_loss(exp_action, action)
+            # loss_actor.mean().backward()
             self.optim_actor.step()
 
-            print("Generator Pretrain Iteration:", i + 1)
+            # print("Generator Pretrain Iteration:", i + 1)
 
     def save(self, directory='./preTrained', name='GAIL'):
         torch.save(self.actor.state_dict(), '{}/{}_actor.pth'.format(directory, name))
